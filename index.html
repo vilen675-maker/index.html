@@ -1,0 +1,420 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#17231d">
+<title>Пилорама — карта раскроя</title>
+<style>
+:root {
+  color-scheme:dark;--bg:#101713;--panel:#1b2720;--panel2:#26352b;
+  --text:#f4f7f3;--muted:#b7c4b9;--green:#69d391;--blue:#65b8ff;
+  --red:#ff8179;--brown:#a77751;--border:#405347;--input:#101913
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+font:17px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1150px;margin:auto;padding:14px}
+h1{font-size:clamp(26px,4vw,36px);line-height:1.15}
+h2{font-size:22px;margin:0 0 14px}
+h3{font-size:18px;margin:0 0 10px}
+p,.muted,.note{color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--border);
+border-radius:15px;padding:17px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+label{display:block;font-weight:650;margin-bottom:6px}
+input,select{width:100%;min-height:52px;padding:10px 12px;
+font:inherit;font-size:19px;color:var(--text);background:var(--input);
+border:2px solid var(--border);border-radius:10px}
+input:focus,select:focus{outline:3px solid var(--blue)}
+button{min-height:52px;padding:11px 16px;border:0;border-radius:10px;
+background:var(--green);color:#102117;font:inherit;font-weight:750;
+cursor:pointer}
+button.secondary{background:var(--panel2);color:var(--text);
+border:1px solid var(--border)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.card{background:var(--panel2);border-radius:11px;padding:13px;min-width:0}
+.card small{display:block;color:var(--muted)}
+.big{font-size:clamp(21px,3vw,29px);font-weight:800;overflow-wrap:anywhere}
+.note{font-size:14px}
+.warn{background:#422522;border:1px solid #a84d45;border-radius:10px;
+padding:12px;color:#ffe0dc;margin:10px 0}
+.good{color:var(--green)}
+.stage{padding:13px 0;border-bottom:1px solid var(--border)}
+.stage:last-child{border-bottom:0}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:800px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}
+th{font-size:14px;color:var(--muted)}
+canvas{display:block;width:100%;max-width:760px;height:auto;margin:auto;
+background:#101813;border-radius:10px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.dot{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:5px}
+@media(max-width:650px){main{padding:9px}.panel{padding:13px}
+.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media print{
+ :root{color-scheme:light;--bg:white;--panel:white;--panel2:#eee;
+ --text:black;--muted:#444;--border:#aaa}
+ body{background:white;color:black;font-size:12px}
+ main{padding:0}.panel{break-inside:avoid;padding:9px;margin:7px 0}
+ .actions{display:none}input,select{color:black;background:white}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Карта раскроя бревна</h1>
+<p>Ленточная пилорама · линейка · повороты · полезные остатки · офлайн</p>
+
+<section class="panel">
+<h2>1. Размеры бревна и пиломатериала</h2>
+<div class="grid">
+ <div><label for="diameter">Диаметр бревна, мм</label>
+ <input id="diameter" type="number" min="50" max="3000" value="300"></div>
+ <div><label for="length">Длина бревна, м</label>
+ <input id="length" type="number" min=".1" max="30" step=".1" value="6"></div>
+ <div><label for="bark">Толщина коры, мм</label>
+ <input id="bark" type="number" min="0" max="100" step=".5" value="10"></div>
+ <div><label for="kerf">Ширина пропила, мм</label>
+ <input id="kerf" type="number" min="0" max="20" step=".1" value="2.5"></div>
+ <div><label for="shrink">Припуск на усушку, мм</label>
+ <input id="shrink" type="number" min="0" max="30" step=".1" value="1"></div>
+ <div><label for="board">Целевая толщина доски, мм</label>
+ <input id="board" type="number" min="5" max="300" step=".5" value="25"></div>
+ <div><label for="width">Целевая ширина доски, мм</label>
+ <input id="width" type="number" min="10" max="2000" value="100"></div>
+ <div><label for="reserve">Запас первого среза, мм</label>
+ <input id="reserve" type="number" min="0" max="100" value="5"></div>
+</div>
+<div class="actions">
+<button id="calculate">Рассчитать карту</button>
+<button id="print" class="secondary">Печать / PDF</button>
+<button id="reset" class="secondary">Сбросить</button>
+</div>
+<div id="error" class="warn" hidden></div>
+</section>
+
+<section class="panel">
+<h2>2. Ноль и калибровка линейки</h2>
+<p>Номинальная установка = геометрическое расстояние от опоры до полотна + поправка. Поправка может быть положительной или отрицательной.</p>
+<div class="grid">
+ <div><label for="correction">Поправка калибровки, мм</label>
+ <input id="correction" type="number" step=".1" value="0"></div>
+ <div><label for="known">Контрольное расстояние, мм</label>
+ <input id="known" type="number" min="0" step=".1" placeholder="Например, 100"></div>
+ <div><label for="shown">Показание шкалы при замере, мм</label>
+ <input id="shown" type="number" step=".1" placeholder="Показание станка"></div>
+</div>
+<div class="actions">
+<button id="calibrate" class="secondary">Рассчитать поправку</button>
+</div>
+<p class="note">Поправка = контрольное фактическое расстояние − показание шкалы. Используйте замер при безопасно остановленном станке. Если шкала имеет другую кинематику, эта простая поправка не компенсирует её нелинейность.</p>
+</section>
+
+<section class="panel">
+<h2>3. Геометрия опоры после поворота</h2>
+<p>Для точного показания линейки нужна высота целевой плоскости над столом. После поворота положение бревна меняется, поэтому не следует автоматически переносить установку с предыдущего этапа.</p>
+<div id="stages"></div>
+<p class="note">Введите измеренную доступную высоту над опорной плоскостью для каждого положения. Ноль доступной высоты — поверхность стола. Значение неизвестно — оставьте поле пустым: этап не будет представлен как готовая настройка.</p>
+</section>
+
+<section class="panel">
+<h2>4. Итоги</h2>
+<div class="cards">
+ <div class="card"><small>Основные доски*</small><div id="count" class="big">—</div></div>
+ <div class="card"><small>Расчётный объём*</small><div id="volume" class="big">—</div></div>
+ <div class="card"><small>Объём цилиндра</small><div id="logvolume" class="big">—</div></div>
+ <div class="card"><small>Оценочный выход*</small><div id="yield" class="big">—</div></div>
+</div>
+<p class="note">* Предварительная оценка для одного прохода по введённой полезной высоте. Число изделий из разных положений нельзя суммировать как независимые доски без полной модели оставшейся геометрии.</p>
+</section>
+
+<section class="panel">
+<h2>5. Схема сечения</h2>
+<canvas id="canvas" width="760" height="520"></canvas>
+<div class="legend">
+<span><i class="dot" style="background:#a77751"></i>Кора</span>
+<span><i class="dot" style="background:#d5b58a"></i>Древесина</span>
+<span><i class="dot" style="background:#69d391"></i>Предполагаемые доски</span>
+<span><i class="dot" style="background:#ff8179"></i>Вскрышной срез</span>
+</div>
+<p class="note">Схема показывает круг и выбранные горизонтальные уровни. После поворота реальная форма сечения уже не является исходным кругом: для точной геометрии нужны контур каждого остатка и положение его опоры.</p>
+</section>
+
+<section class="panel">
+<h2>6. Пошаговая карта линейки</h2>
+<div class="tablewrap">
+<table>
+<thead><tr>
+<th>Этап / поворот</th><th>№</th><th>Операция</th>
+<th>Геометрическая высота, мм</th><th>Поправка, мм</th>
+<th>Установка линейки, мм</th><th>Статус</th>
+</tr></thead>
+<tbody id="plan"></tbody>
+</table>
+</div>
+</section>
+
+<section class="panel">
+<h2>7. Предложения по использованию остатков</h2>
+<div id="suggestions"><p>Выполните расчёт.</p></div>
+<p class="note">Подбор остатков ограничен заданными габаритами. Для гарантии, что доска действительно помещается в горбыль, нужны размеры его минимального сечения по длине, а также сведения о сбежистости, кривизне и дефектах.</p>
+</section>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const fmt = (n,d=1) => Number.isFinite(n)
+ ? new Intl.NumberFormat("ru-RU",{maximumFractionDigits:d}).format(n) : "—";
+
+const stageDefs = [
+ {id:"s0",label:"Положение 0° — исходная опора"},
+ {id:"s90",label:"Положение 90° — после поворота"},
+ {id:"s180",label:"Положение 180° — противоположная сторона"},
+ {id:"s270",label:"Положение 270° — последний бок"}
+];
+
+function initStages(){
+ $("stages").replaceChildren();
+ for(const s of stageDefs){
+  const box=document.createElement("div");
+  box.className="stage";
+  const h=document.createElement("h3");
+  h.textContent=s.label;
+  const grid=document.createElement("div");
+  grid.className="grid";
+  const wrap=document.createElement("div");
+  const label=document.createElement("label");
+  label.htmlFor=s.id;
+  label.textContent="Измеренная полезная высота над столом, мм";
+  const input=document.createElement("input");
+  input.id=s.id;input.type="number";input.min="0";input.step=".1";
+  input.placeholder=s.id==="s0"?"Введите высоту для первого положения":"Введите после поворота";
+  wrap.append(label,input);
+  const note=document.createElement("p");
+  note.className="note";
+  note.textContent="Не заполняйте наугад: укажите фактическую геометрию заготовки в этом положении.";
+  grid.append(wrap);
+  box.append(h,grid,note);
+  $("stages").append(box);
+ }
+}
+initStages();
+
+function read(){
+ const ids=["diameter","length","bark","kerf","shrink","board","width","reserve","correction"];
+ const v={};
+ for(const id of ids){
+  const raw=$(id).value.trim();
+  const n=Number(raw);
+  if(raw===""||!Number.isFinite(n))throw Error("Проверьте заполнение числовых полей.");
+  v[id]=n;
+ }
+ if(v.diameter<=0||v.length<=0||v.board<=0||v.width<=0)throw Error("Диаметр, длина, толщина и ширина доски должны быть больше нуля.");
+ if(v.bark<0||v.bark*2>=v.diameter)throw Error("Проверьте толщину коры и диаметр.");
+ if(v.kerf<0||v.shrink<0||v.reserve<0)throw Error("Пропил, усушка и запас не могут быть отрицательными.");
+ v.heights={};
+ for(const s of stageDefs){
+  const raw=$(s.id).value.trim();
+  v.heights[s.id]=raw===""?null:Number(raw);
+  if(raw!==""&&(!Number.isFinite(v.heights[s.id])||v.heights[s.id]<0))
+   throw Error("Высота для этапа должна быть неотрицательным числом.");
+ }
+ return v;
+}
+
+/*
+ * Высота пропила в пределах выбранного положения отсчитывается
+ * от стола. Установка шкалы = геометрическая высота + поправка.
+ *
+ * Неизвестная высота опоры после поворота не выводится из диаметра:
+ * форма бревна после предыдущих пропилов и фактическая опора
+ * должны быть измерены, иначе это было бы предположением.
+ */
+function buildPlan(v){
+ const rows=[];
+ const step=v.board+v.shrink+v.kerf;
+ const maxRows=500;
+ for(let si=0;si<stageDefs.length;si++){
+  const s=stageDefs[si];
+  const available=v.heights[s.id];
+  if(available===null){
+   rows.push({stage:s.label,no:"—",action:"Поворот / замер опоры",
+    geo:null,corr:v.correction,setting:null,status:"Нужен замер"});
+   continue;
+  }
+  if(si===0){
+   const first=v.bark+v.reserve;
+   rows.push({stage:s.label,no:1,action:"Вскрышной пропил",
+    geo:first,corr:v.correction,setting:first+v.correction,
+    status:first<=available?"Расчётно":"Выше заданной высоты"});
+  }
+  let h=(si===0?v.bark+v.reserve:0);
+  let no=si===0?2:1;
+  let count=0;
+  while(count<maxRows){
+   h+=step;
+   if(h>available)break;
+   rows.push({stage:s.label,no,action:"Пропил под доску",
+    geo:h,corr:v.correction,setting:h+v.correction,
+    status:"Геометрическая оценка"});
+   no++;count++;
+  }
+ }
+ return rows;
+}
+
+function renderPlan(rows){
+ const body=$("plan");body.replaceChildren();
+ for(const r of rows){
+  const tr=document.createElement("tr");
+  const vals=[r.stage,r.no,r.action,r.geo===null?"—":fmt(r.geo,1),
+   fmt(r.corr,1),r.setting===null?"—":fmt(r.setting,1),r.status];
+  for(let i=0;i<vals.length;i++){
+   const td=document.createElement("td");
+   td.textContent=vals[i];
+   if(i===5&&r.setting!==null){td.style.fontWeight="800";td.style.color="#69d391";}
+   if(r.status==="Нужен замер"&&i===6)td.style.color="#ff8179";
+   tr.append(td);
+  }
+  body.append(tr);
+ }
+}
+
+function renderStats(v){
+ /*
+  * Объём одной доски — t × w × L.
+  * Количество досок для предварительной оценки берётся только
+  * по первой заданной полезной высоте, чтобы не суммировать
+  * повторные положения как независимый материал.
+  */
+ const usable=v.heights.s0;
+ let count=0;
+ if(usable!==null){
+  let h=v.bark+v.reserve;
+  const step=v.board+v.shrink+v.kerf;
+  while(h+step<=usable&&count<500){h+=step;count++;}
+ }
+ const volume=count*(v.board/1000)*(v.width/1000)*v.length;
+ const d=v.diameter/1000;
+ const log=Math.PI*(d/2)**2*v.length;
+ $("count").textContent=usable===null?"Нужен замер":String(count);
+ $("volume").textContent=usable===null?"—":fmt(volume,4)+" м³";
+ $("logvolume").textContent=fmt(log,4)+" м³";
+ $("yield").textContent=usable===null||log===0?"—":fmt(volume/log*100,1)+"%";
+}
+
+function draw(v){
+ const c=$("canvas"),ctx=c.getContext("2d");
+ const W=c.width,H=c.height;
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle="#101813";ctx.fillRect(0,0,W,H);
+ const D=v.diameter;
+ const scale=Math.min(380/D,420/D);
+ const r=D*scale/2,cx=W/2+35,cy=H/2;
+ const bottom=cy+r;
+ ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+ ctx.fillStyle="#a77751";ctx.fill();
+ const wr=Math.max(0,(D/2-v.bark)*scale);
+ ctx.beginPath();ctx.arc(cx,cy,wr,0,Math.PI*2);
+ ctx.fillStyle="#d5b58a";ctx.fill();
+ ctx.strokeStyle="#e7d5bd";ctx.lineWidth=2;ctx.stroke();
+ ctx.beginPath();ctx.arc(cx,cy,wr,0,Math.PI*2);
+ ctx.strokeStyle="#8c6849";ctx.lineWidth=1;ctx.stroke();
+
+ const levels=[];
+ const first=v.bark+v.reserve;
+ levels.push({h:first,color:"#ff8179",label:"Вскрышной"});
+ const usable=v.heights.s0;
+ if(usable!==null){
+  let h=first;const step=v.board+v.shrink+v.kerf;
+  for(let i=0;i<500;i++){h+=step;if(h>usable)break;levels.push({h,color:"#69d391",label:"Доска"});}
+ }
+ ctx.font="13px system-ui,sans-serif";
+ for(const l of levels){
+  const y=bottom-l.h*scale,dy=y-cy;
+  if(Math.abs(dy)>r)continue;
+  const dx=Math.sqrt(Math.max(0,r*r-dy*dy));
+  ctx.beginPath();ctx.moveTo(cx-dx,y);ctx.lineTo(cx+dx,y);
+  ctx.strokeStyle=l.color;ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle=l.color;ctx.textAlign="right";
+  ctx.fillText(fmt(l.h,1)+" мм",cx-r-9,y-3);
+ }
+ ctx.fillStyle="#f4f7f3";ctx.textAlign="center";
+ ctx.font="bold 16px system-ui,sans-serif";
+ ctx.fillText("Ø "+fmt(D,1)+" мм",cx,H-20);
+ ctx.fillStyle="#b7c4b9";ctx.font="13px system-ui,sans-serif";
+ ctx.fillText("Схема исходного сечения; не модель всех поворотов",W/2,18);
+}
+
+function renderSuggestions(v){
+ const el=$("suggestions");el.replaceChildren();
+ const usable=v.heights.s0;
+ if(usable===null){
+  el.textContent="Укажите измеренную полезную высоту исходного положения, чтобы оценить базовый раскрой.";
+  return;
+ }
+ const first=v.bark+v.reserve;
+ const step=v.board+v.shrink+v.kerf;
+ let count=0,h=first;
+ while(h+step<=usable&&count<500){h+=step;count++;}
+ const candidates=[
+  {name:"Основные доски",desc:`Предварительно ${count} досок по ${fmt(v.board,1)} × ${fmt(v.width,1)} мм, длина ${fmt(v.length,2)} м.`},
+  {name:"Узкие боковые доски",desc:`Можно рассматривать доски шириной от ${fmt(Math.min(v.width,50),0)} мм только после замера минимальной ширины остатка.`},
+  {name:"Рейки и бруски",desc:"Подбор сечения возможен после измерения минимальной толщины и ширины бокового остатка по всей длине."},
+  {name:"Горбыль / отход",desc:"Часть внешнего контура с корой и участки уже требуемого минимального сечения следует отнести к отходам."}
+ ];
+ for(const item of candidates){
+  const box=document.createElement("div");box.className="stage";
+  const h3=document.createElement("h3");h3.textContent=item.name;
+  const p=document.createElement("p");p.textContent=item.desc;
+  box.append(h3,p);el.append(box);
+ }
+ const note=document.createElement("div");note.className="warn";
+ note.textContent="Для честной автоматической оптимизации боковых остатков нужно ввести их фактические размеры после каждого среза. Из одного диаметра и толщины пропила невозможно достоверно определить пригодность каждой боковой доски после поворотов.";
+ el.append(note);
+}
+
+function run(){
+ $("error").hidden=true;
+ try{
+  const v=read();
+  const rows=buildPlan(v);
+  renderPlan(rows);renderStats(v);draw(v);renderSuggestions(v);
+ }catch(e){
+  $("error").textContent=e.message||"Ошибка расчёта";
+  $("error").hidden=false;
+ }
+}
+
+$("calculate").addEventListener("click",run);
+$("print").addEventListener("click",()=>window.print());
+$("calibrate").addEventListener("click",()=>{
+ const known=Number($("known").value),shown=Number($("shown").value);
+ if($("known").value.trim()===""||$("shown").value.trim()===""||
+    !Number.isFinite(known)||!Number.isFinite(shown)||known<0){
+  $("error").textContent="Введите фактическое контрольное расстояние и показание шкалы.";
+  $("error").hidden=false;return;
+ }
+ $("correction").value=(known-shown).toFixed(2);
+ run();
+});
+$("reset").addEventListener("click",()=>{
+ const defaults={diameter:300,length:6,bark:10,kerf:2.5,shrink:1,
+ board:25,width:100,reserve:5,correction:0};
+ for(const [id,value] of Object.entries(defaults))$(id).value=value;
+ for(const s of stageDefs)$(s.id).value="";
+ $("known").value="";$("shown").value="";
+ run();
+});
+for(const id of ["diameter","length","bark","kerf","shrink","board",
+ "width","reserve","correction","s0","s90","s180","s270"]){
+ $(id).addEventListener("input",run);
+}
+run();
+</script>
+</body>
+</html>
